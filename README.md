@@ -54,5 +54,5 @@ Given a registered customer
 When they successfully login
 
  
-33
+
 Then the menu screen is displayed.
