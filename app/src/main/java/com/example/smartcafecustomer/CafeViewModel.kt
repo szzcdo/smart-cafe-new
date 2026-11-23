@@ -11,6 +11,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,6 +23,7 @@ class CafeViewModel(application: Application) : AndroidViewModel(application) {
     private val db = CafeDatabase(application)
     private val sessionStore = SessionStore(application)
     private val sentimentModel = CafeSentimentModel()
+    private val auth: FirebaseAuth = FirebaseAuth.getInstance()
 
     private val _currentUserEmail = MutableStateFlow<String?>(null)
     val currentUserEmail: StateFlow<String?> = _currentUserEmail
@@ -60,9 +62,11 @@ class CafeViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             sessionStore.userEmailFlow.collect { savedEmail ->
-                _currentUserEmail.value = savedEmail
-                if (savedEmail != null) {
-                    _orders.value = db.getOrdersForCustomer(savedEmail)
+                val firebaseUser = auth.currentUser
+                val activeEmail = firebaseUser?.email ?: savedEmail
+                _currentUserEmail.value = activeEmail
+                if (activeEmail != null) {
+                    _orders.value = db.getOrdersForCustomer(activeEmail)
                 }
             }
         }
@@ -85,15 +89,17 @@ class CafeViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        val valid = db.validateLogin(cleanEmail, password)
-        if (valid) {
-            _authError.value = null
-            viewModelScope.launch {
-                sessionStore.saveUserEmail(cleanEmail)
+        auth.signInWithEmailAndPassword(cleanEmail, password)
+            .addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    _authError.value = null
+                    viewModelScope.launch {
+                        sessionStore.saveUserEmail(cleanEmail)
+                    }
+                } else {
+                    _authError.value = task.exception?.localizedMessage ?: "Login failed."
+                }
             }
-        } else {
-            _authError.value = "Invalid email or password."
-        }
     }
 
     fun register(email: String, password: String) {
@@ -107,18 +113,22 @@ class CafeViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        val created = db.registerUser(cleanEmail, password)
-        if (created) {
-            _authError.value = null
-            viewModelScope.launch {
-                sessionStore.saveUserEmail(cleanEmail)
+        auth.createUserWithEmailAndPassword(cleanEmail, password)
+            .addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    _authError.value = null
+                    db.registerUser(cleanEmail, password)
+                    viewModelScope.launch {
+                        sessionStore.saveUserEmail(cleanEmail)
+                    }
+                } else {
+                    _authError.value = task.exception?.localizedMessage ?: "Registration failed."
+                }
             }
-        } else {
-            _authError.value = "An account with this email already exists."
-        }
     }
 
     fun logout() {
+        auth.signOut()
         viewModelScope.launch {
             sessionStore.clearUserEmail()
             _cart.value = emptyList()
@@ -199,7 +209,6 @@ class CafeViewModel(application: Application) : AndroidViewModel(application) {
         _bannerMessage.value = "Order $orderId placed!"
         sendNotification("Order Received", "Order $orderId is now Pending.")
 
-        // Simulate café kitchen updating the order status automatically
         viewModelScope.launch {
             delay(8000)
             db.updateOrderStatus(orderId, "Preparing")
