@@ -7,24 +7,36 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import java.util.Locale
+import com.example.smartcafecustomer.ui.theme.*
+import java.text.SimpleDateFormat
+import java.util.*
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
+            SmartCafeCustomerTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -41,126 +53,252 @@ fun SmartCafeApp(vm: CafeViewModel = viewModel()) {
     val hasAcceptedTerms by vm.hasAcceptedTerms.collectAsState()
     val currentUserEmail by vm.currentUserEmail.collectAsState()
 
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-        onResult = { }
-    )
+    val notificationLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
 
-    LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    LaunchedEffect(currentUserEmail) {
+        if (currentUserEmail != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
-    if (!hasAcceptedTerms) {
-        TermsScreen(onAccept = { vm.acceptTerms() })
-    } else if (currentUserEmail == null) {
-        AuthScreen(vm = vm)
-    } else {
-        CustomerHomeScreen(vm = vm, userEmail = currentUserEmail!!)
+    when {
+        !hasAcceptedTerms -> TermsScreen(onAccept = { vm.acceptTerms() })
+        currentUserEmail == null -> AuthScreen(vm = vm)
+        else -> MainScaffold(vm = vm, userEmail = currentUserEmail!!)
     }
 }
 
 @Composable
 fun TermsScreen(onAccept: () -> Unit) {
+    var agreed by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+            .background(CafeWhite)
+            .padding(24.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(
-            text = "Smart Cafe Privacy & Terms",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = "This app stores your email, hashed password, orders, and feedback locally on your device in SQLite to process your café orders. Feedback comments are analysed locally on-device to estimate customer sentiment.",
-            style = MaterialTheme.typography.bodyMedium
-        )
-        Spacer(modifier = Modifier.height(24.dp))
-        Button(
-            onClick = onAccept,
-            modifier = Modifier.fillMaxWidth()
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Surface(
+                color = CafeGreenContainer,
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    text = "PRIVACY & TERMS",
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    color = CafeGreenPrimary,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 13.sp
+                )
+            }
+
+            Text(
+                text = "Welcome to Smart Café",
+                style = MaterialTheme.typography.headlineMedium,
+                color = CafeGreenPrimary,
+                fontWeight = FontWeight.ExtraBold
+            )
+
+            Text(
+                text = "Before you grab your first coffee, here is a quick, honest look at how we handle your information:",
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold,
+                color = CafeDarkText
+            )
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CafeGreenContainer),
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.dp, CafeGreenSecondary)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    PolicyPoint(
+                        title = "1. Signing In Safely",
+                        body = "When you create an account or log in, we use Google Firebase Authentication to verify your email and password over a secure, encrypted connection."
+                    )
+                    PolicyPoint(
+                        title = "2. Your Orders Stay on Your Phone",
+                        body = "Your order history, cart items, and star ratings are saved locally on your device, with automatic device backups turned off."
+                    )
+                    PolicyPoint(
+                        title = "3. Private Feedback Checks",
+                        body = "When you leave a written review, a small built-in model on your phone checks if it sounds positive or negative. Your comments are never sent to external AI servers."
+                    )
+                    PolicyPoint(
+                        title = "4. Order Alerts & Your Choices",
+                        body = "We only send notifications to let you know when your order is being made or ready to collect. You can turn off alerts, sign out anytime, or wipe local data in your phone's settings."
+                    )
+                }
+            }
+        }
+
+        Column(
+            modifier = Modifier.padding(top = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Accept & Continue")
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Checkbox(
+                    checked = agreed,
+                    onCheckedChange = { agreed = it },
+                    colors = CheckboxDefaults.colors(checkedColor = CafeGreenPrimary)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Sounds good — I agree to the Smart Café terms and privacy notice.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = CafeDarkText
+                )
+            }
+
+            Button(
+                onClick = onAccept,
+                enabled = agreed,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = CafeGreenPrimary,
+                    contentColor = CafeWhite
+                )
+            ) {
+                Text(
+                    text = "Let's Get Started",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            }
         }
     }
 }
 
 @Composable
+private fun PolicyPoint(title: String, body: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(
+            text = title,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 15.sp,
+            color = CafeGreenPrimary
+        )
+        Text(
+            text = body,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 13.5.sp,
+            color = CafeDarkText
+        )
+    }
+}
+
+@Composable
 fun AuthScreen(vm: CafeViewModel) {
+    var isRegister by remember { mutableStateOf(false) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var isRegisterMode by remember { mutableStateOf(false) }
     val authError by vm.authError.collectAsState()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(CafeWhite)
             .padding(24.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Icon(
+            imageVector = Icons.Default.LocalCafe,
+            contentDescription = "Smart Café Logo",
+            tint = CafeGreenPrimary,
+            modifier = Modifier.size(64.dp)
+        )
+        Spacer(modifier = Modifier.height(10.dp))
         Text(
-            text = "Smart Cafe Customer",
-            style = MaterialTheme.typography.headlineMedium,
+            text = "Smart Café",
+            style = MaterialTheme.typography.headlineLarge,
+            color = CafeGreenPrimary,
+            fontWeight = FontWeight.ExtraBold
+        )
+        Text(
+            text = if (isRegister) "Create Your Customer Account" else "Customer Sign In",
+            style = MaterialTheme.typography.titleMedium,
+            color = CafeGreenSecondary,
             fontWeight = FontWeight.Bold
         )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = if (isRegisterMode) "Create an account" else "Sign in to order",
-            style = MaterialTheme.typography.bodyLarge
-        )
+
         Spacer(modifier = Modifier.height(24.dp))
 
         OutlinedTextField(
             value = email,
             onValueChange = { email = it },
-            label = { Text("Email") },
+            label = { Text("Email Address", fontWeight = FontWeight.Bold) },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            textStyle = LocalTextStyle.current.copy(fontWeight = FontWeight.Bold)
         )
+
         Spacer(modifier = Modifier.height(12.dp))
 
         OutlinedTextField(
             value = password,
             onValueChange = { password = it },
-            label = { Text("Password (min 6 chars)") },
-            visualTransformation = PasswordVisualTransformation(),
+            label = { Text("Password (min 6 characters)", fontWeight = FontWeight.Bold) },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth()
+            visualTransformation = PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth(),
+            textStyle = LocalTextStyle.current.copy(fontWeight = FontWeight.Bold)
         )
 
         if (authError != null) {
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
             Text(
                 text = authError!!,
                 color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp
             )
         }
 
         Spacer(modifier = Modifier.height(20.dp))
+
         Button(
             onClick = {
-                if (isRegisterMode) {
-                    vm.register(email, password)
-                } else {
-                    vm.login(email, password)
-                }
+                if (isRegister) vm.register(email, password) else vm.login(email, password)
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = CafeGreenPrimary,
+                contentColor = CafeWhite
+            )
         ) {
-            Text(if (isRegisterMode) "Register" else "Login")
+            Text(
+                text = if (isRegister) "Register Account" else "Sign In",
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 16.sp
+            )
         }
 
-        TextButton(onClick = { isRegisterMode = !isRegisterMode }) {
+        Spacer(modifier = Modifier.height(12.dp))
+
+        TextButton(onClick = { isRegister = !isRegister }) {
             Text(
-                if (isRegisterMode) "Already have an account? Login"
-                else "New customer? Create an account"
+                text = if (isRegister) "Already have an account? Sign In" else "New customer? Create an account",
+                color = CafeGreenPrimary,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 14.sp
             )
         }
     }
@@ -168,52 +306,94 @@ fun AuthScreen(vm: CafeViewModel) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CustomerHomeScreen(vm: CafeViewModel, userEmail: String) {
+fun MainScaffold(vm: CafeViewModel, userEmail: String) {
     var selectedTab by remember { mutableIntStateOf(0) }
-    val bannerMessage by vm.bannerMessage.collectAsState()
     val cart by vm.cart.collectAsState()
-
-    var totalCartCount = 0
-    for (item in cart) {
-        totalCartCount += item.quantity
-    }
+    val bannerMessage by vm.bannerMessage.collectAsState()
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Smart Cafe") },
+                title = {
+                    Column {
+                        Text(
+                            text = "Smart Café",
+                            fontWeight = FontWeight.ExtraBold,
+                            color = CafeWhite,
+                            fontSize = 20.sp
+                        )
+                        Text(
+                            text = userEmail,
+                            fontWeight = FontWeight.Bold,
+                            color = CafeGreenContainer,
+                            fontSize = 12.sp
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = CafeGreenPrimary,
+                    titleContentColor = CafeWhite
+                ),
                 actions = {
-                    TextButton(onClick = { vm.logout() }) {
-                        Text("Logout")
+                    IconButton(onClick = { vm.logout() }) {
+                        Icon(
+                            imageVector = Icons.Default.ExitToApp,
+                            contentDescription = "Logout",
+                            tint = CafeWhite
+                        )
                     }
                 }
             )
         },
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                containerColor = CafeWhite,
+                tonalElevation = 6.dp
+            ) {
+                val cartCount = cart.sumOf { it.quantity }
                 NavigationBarItem(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
-                    icon = { Text("Menu") },
-                    label = { Text("Browse") }
+                    icon = { Icon(Icons.Default.RestaurantMenu, contentDescription = "Menu") },
+                    label = { Text("Menu", fontWeight = FontWeight.ExtraBold) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = CafeWhite,
+                        indicatorColor = CafeGreenPrimary,
+                        selectedTextColor = CafeGreenPrimary
+                    )
                 )
                 NavigationBarItem(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    icon = { Text("Cart ($totalCartCount)") },
-                    label = { Text("Basket") }
+                    icon = { Icon(Icons.Default.ShoppingCart, contentDescription = "Cart") },
+                    label = { Text("Cart ($cartCount)", fontWeight = FontWeight.ExtraBold) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = CafeWhite,
+                        indicatorColor = CafeGreenPrimary,
+                        selectedTextColor = CafeGreenPrimary
+                    )
                 )
                 NavigationBarItem(
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
-                    icon = { Text("Orders") },
-                    label = { Text("Track") }
+                    icon = { Icon(Icons.Default.ReceiptLong, contentDescription = "Orders") },
+                    label = { Text("Orders", fontWeight = FontWeight.ExtraBold) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = CafeWhite,
+                        indicatorColor = CafeGreenPrimary,
+                        selectedTextColor = CafeGreenPrimary
+                    )
                 )
                 NavigationBarItem(
                     selected = selectedTab == 3,
                     onClick = { selectedTab = 3 },
-                    icon = { Text("Review") },
-                    label = { Text("Feedback") }
+                    icon = { Icon(Icons.Default.RateReview, contentDescription = "Feedback") },
+                    label = { Text("Feedback", fontWeight = FontWeight.ExtraBold) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = CafeWhite,
+                        indicatorColor = CafeGreenPrimary,
+                        selectedTextColor = CafeGreenPrimary
+                    )
                 )
             }
         }
@@ -221,45 +401,39 @@ fun CustomerHomeScreen(vm: CafeViewModel, userEmail: String) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(CafeOffWhite)
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp)
         ) {
-            Text(
-                text = "Signed in as: $userEmail",
-                style = MaterialTheme.typography.labelMedium
-            )
-
             if (bannerMessage != null) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer
-                    )
+                Surface(
+                    color = CafeGreenContainer,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(12.dp),
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(bannerMessage!!, modifier = Modifier.weight(1f))
+                        Text(
+                            text = bannerMessage!!,
+                            color = CafeGreenPrimary,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 14.sp
+                        )
                         TextButton(onClick = { vm.clearBanner() }) {
-                            Text("OK")
+                            Text("OK", color = CafeGreenPrimary, fontWeight = FontWeight.ExtraBold)
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
             when (selectedTab) {
-                0 -> MenuTab(vm)
-                1 -> CartTab(vm, onOrderPlaced = { selectedTab = 2 })
-                2 -> OrdersTab(vm)
-                3 -> FeedbackTab(vm)
+                0 -> MenuTab(vm = vm)
+                1 -> CartTab(vm = vm, onOrderPlaced = { selectedTab = 2 })
+                2 -> OrdersTab(vm = vm)
+                3 -> FeedbackTab(vm = vm)
             }
         }
     }
@@ -267,63 +441,115 @@ fun CustomerHomeScreen(vm: CafeViewModel, userEmail: String) {
 
 @Composable
 fun MenuTab(vm: CafeViewModel) {
-    val allItems by vm.menuItems.collectAsState()
+    val menuItems by vm.menuItems.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("All") }
+    val categories = listOf("All", "Drinks", "Cakes", "Snacks")
 
-    val filteredItems = mutableListOf<MenuItem>()
-    for (item in allItems) {
-        val matchesCategory = selectedCategory == "All" || item.category == selectedCategory
-        val matchesSearch = searchQuery.isBlank() ||
-                item.name.contains(searchQuery, ignoreCase = true) ||
+    val filtered = menuItems.filter { item ->
+        val matchesCat = selectedCategory == "All" || item.category.equals(selectedCategory, ignoreCase = true)
+        val matchesQuery = item.name.contains(searchQuery, ignoreCase = true) ||
                 item.description.contains(searchQuery, ignoreCase = true)
-        if (matchesCategory && matchesSearch) {
-            filteredItems.add(item)
-        }
+        matchesCat && matchesQuery
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
-            label = { Text("Search drinks or cakes...") },
+            placeholder = { Text("Search drinks, cakes, snacks...", fontWeight = FontWeight.Bold) },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = CafeGreenPrimary) },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            textStyle = LocalTextStyle.current.copy(fontWeight = FontWeight.Bold)
         )
-        Spacer(modifier = Modifier.height(8.dp))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val categories = listOf("All", "Drinks", "Cakes")
-            for (cat in categories) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(categories) { category ->
                 FilterChip(
-                    selected = selectedCategory == cat,
-                    onClick = { selectedCategory = cat },
-                    label = { Text(cat) }
+                    selected = selectedCategory == category,
+                    onClick = { selectedCategory = category },
+                    label = {
+                        Text(
+                            text = category,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = CafeGreenPrimary,
+                        selectedLabelColor = CafeWhite,
+                        containerColor = CafeWhite,
+                        labelColor = CafeGreenPrimary
+                    )
                 )
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
 
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(filteredItems) { item ->
-                Card(modifier = Modifier.fillMaxWidth()) {
+        LazyColumn(
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            items(filtered) { item ->
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = CafeWhite),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, CafeGreenContainer),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(14.dp),
+                            .padding(16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(item.name, fontWeight = FontWeight.Bold)
-                            Text(item.description, style = MaterialTheme.typography.bodySmall)
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = item.category.uppercase(),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = CafeGreenSecondary
+                            )
+                            Text(
+                                text = item.name,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = CafeDarkText
+                            )
+                            Text(
+                                text = item.description,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF334735)
+                            )
                             Text(
                                 text = String.format(Locale.UK, "£%.2f", item.price),
-                                fontWeight = FontWeight.SemiBold
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = CafeGreenPrimary
                             )
                         }
-                        Button(onClick = { vm.addToCart(item) }) {
-                            Text("+ Add")
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Button(
+                            onClick = { vm.addToCart(item) },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = CafeGreenPrimary,
+                                contentColor = CafeWhite
+                            )
+                        ) {
+                            Text("Add", fontWeight = FontWeight.ExtraBold)
                         }
                     }
                 }
@@ -335,107 +561,221 @@ fun MenuTab(vm: CafeViewModel) {
 @Composable
 fun CartTab(vm: CafeViewModel, onOrderPlaced: () -> Unit) {
     val cart by vm.cart.collectAsState()
-    val total = vm.getCartTotal()
 
-    if (cart.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Your cart is empty. Add items from the Menu tab.")
-        }
-        return
-    }
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(cart) { cartItem ->
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        if (cart.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Your cart is empty. Add items from the Menu!",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = CafeGreenPrimary
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(cart) { cartItem ->
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = CafeWhite),
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, CafeGreenContainer)
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(cartItem.menuItem.name, fontWeight = FontWeight.Bold)
-                            Text(
-                                String.format(
-                                    Locale.UK,
-                                    "%d x £%.2f = £%.2f",
-                                    cartItem.quantity,
-                                    cartItem.menuItem.price,
-                                    cartItem.subtotal
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = cartItem.menuItem.name,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 16.sp,
+                                    color = CafeDarkText
                                 )
-                            )
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            OutlinedButton(onClick = { vm.decreaseQuantity(cartItem.menuItem.id) }) {
-                                Text("-")
+                                Text(
+                                    text = String.format(
+                                        Locale.UK,
+                                        "£%.2f each • Subtotal: £%.2f",
+                                        cartItem.menuItem.price,
+                                        cartItem.subtotal
+                                    ),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.5.sp,
+                                    color = CafeGreenSecondary
+                                )
                             }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            OutlinedButton(onClick = { vm.addToCart(cartItem.menuItem) }) {
-                                Text("+")
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                OutlinedButton(
+                                    onClick = { vm.decreaseQuantity(cartItem.menuItem.id) },
+                                    contentPadding = PaddingValues(0.dp),
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Text("-", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = CafeGreenPrimary)
+                                }
+                                Text(
+                                    text = "${cartItem.quantity}",
+                                    modifier = Modifier.padding(horizontal = 12.dp),
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 16.sp
+                                )
+                                Button(
+                                    onClick = { vm.addToCart(cartItem.menuItem) },
+                                    contentPadding = PaddingValues(0.dp),
+                                    modifier = Modifier.size(36.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = CafeGreenPrimary)
+                                ) {
+                                    Text("+", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = CafeWhite)
+                                }
                             }
                         }
                     }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(12.dp))
-        Text(
-            text = String.format(Locale.UK, "Total: £%.2f", total),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Button(
-            onClick = {
-                vm.placeOrder()
-                onOrderPlaced()
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Place Order")
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CafeGreenContainer),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.padding(top = 12.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Total Amount",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = CafeDarkText
+                        )
+                        Text(
+                            text = String.format(Locale.UK, "£%.2f", vm.getCartTotal()),
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = CafeGreenPrimary
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            vm.placeOrder()
+                            onOrderPlaced()
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = CafeGreenPrimary,
+                            contentColor = CafeWhite
+                        )
+                    ) {
+                        Text("Place Order Now", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                    }
+                }
+            }
         }
-        Spacer(modifier = Modifier.height(12.dp))
     }
 }
 
 @Composable
 fun OrdersTab(vm: CafeViewModel) {
     val orders by vm.orders.collectAsState()
+    val formatter = remember { SimpleDateFormat("dd MMM, HH:mm", Locale.UK) }
 
     if (orders.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No orders yet. Place an order from your Cart!")
+            Text(
+                text = "No orders placed yet.",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = CafeGreenPrimary
+            )
         }
-        return
-    }
-
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        items(orders) { order ->
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+    } else {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(orders) { order ->
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = CafeWhite),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, CafeGreenSecondary)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text(order.orderId, fontWeight = FontWeight.Bold)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = order.orderId,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 16.sp,
+                                color = CafeGreenPrimary
+                            )
+                            Surface(
+                                color = CafeGreenContainer,
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    text = order.status,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 13.sp,
+                                    color = CafeGreenPrimary
+                                )
+                            }
+                        }
                         Text(
-                            text = order.status,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold
+                            text = order.itemsSummary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = CafeDarkText
                         )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = formatter.format(Date(order.timestamp)),
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 12.sp,
+                                color = Color.DarkGray
+                            )
+                            Text(
+                                text = String.format(Locale.UK, "Total: £%.2f", order.total),
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 15.sp,
+                                color = CafeGreenPrimary
+                            )
+                        }
                     }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(order.itemsSummary)
-                    Text(
-                        text = String.format(Locale.UK, "Total: £%.2f", order.total),
-                        style = MaterialTheme.typography.bodySmall
-                    )
                 }
             }
         }
@@ -444,84 +784,121 @@ fun OrdersTab(vm: CafeViewModel) {
 
 @Composable
 fun FeedbackTab(vm: CafeViewModel) {
-    val orders by vm.orders.collectAsState()
     val feedbackList by vm.feedbackList.collectAsState()
-
-    var selectedOrderId by remember { mutableStateOf("") }
+    val orders by vm.orders.collectAsState()
     var rating by remember { mutableIntStateOf(5) }
     var comment by remember { mutableStateOf("") }
 
-    if (selectedOrderId.isEmpty() && orders.isNotEmpty()) {
-        selectedOrderId = orders.first().orderId
-    }
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CafeWhite),
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.dp, CafeGreenSecondary)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "Leave Café Feedback",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = CafeGreenPrimary
+                    )
+                    Text(
+                        text = "Your comment is automatically analysed on-device by our ML sentiment classifier.",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = CafeDarkText
+                    )
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        Text("Leave Order Feedback", fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for (star in 1..5) {
+                            FilterChip(
+                                selected = rating == star,
+                                onClick = { rating = star },
+                                label = { Text("$star ★", fontWeight = FontWeight.ExtraBold) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = CafeGreenPrimary,
+                                    selectedLabelColor = CafeWhite
+                                )
+                            )
+                        }
+                    }
 
-        OutlinedTextField(
-            value = selectedOrderId,
-            onValueChange = { selectedOrderId = it },
-            label = { Text("Order ID (e.g. ORD-123ABC)") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = comment,
+                        onValueChange = { comment = it },
+                        label = { Text("Write your review...", fontWeight = FontWeight.Bold) },
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = LocalTextStyle.current.copy(fontWeight = FontWeight.Bold)
+                    )
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Rating: ")
-            for (star in 1..5) {
-                FilterChip(
-                    selected = rating == star,
-                    onClick = { rating = star },
-                    label = { Text("$star★") },
-                    modifier = Modifier.padding(end = 4.dp)
-                )
+                    Button(
+                        onClick = {
+                            if (comment.isNotBlank()) {
+                                val latestOrderId = orders.firstOrNull()?.orderId ?: "GENERAL"
+                                vm.submitFeedback(latestOrderId, rating, comment)
+                                comment = ""
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = CafeGreenPrimary,
+                            contentColor = CafeWhite
+                        )
+                    ) {
+                        Text("Submit Review", fontWeight = FontWeight.ExtraBold)
+                    }
+                }
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
 
-        OutlinedTextField(
-            value = comment,
-            onValueChange = { comment = it },
-            label = { Text("Comment (e.g. Great hot coffee and fast service)") },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Button(
-            onClick = {
-                if (selectedOrderId.isNotBlank() && comment.isNotBlank()) {
-                    vm.submitFeedback(selectedOrderId, rating, comment)
-                    comment = ""
-                }
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Submit Review")
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-        Text("Recent Reviews & ML Sentiment", fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
-
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(feedbackList) { fb ->
-                val confText = if (fb.confidence != null) {
-                    String.format(Locale.UK, " (%.0f%%)", fb.confidence * 100)
-                } else {
-                    ""
-                }
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text("${fb.orderId} • ${fb.rating}/5 ★", fontWeight = FontWeight.Bold)
-                        Text(fb.comment)
+        items(feedbackList) { fb ->
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CafeWhite),
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.dp, CafeGreenContainer)
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
                         Text(
-                            text = "ML Sentiment: ${fb.sentimentLabel}$confText",
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.bodySmall
+                            text = "Rating: ${fb.rating}/5 ★",
+                            fontWeight = FontWeight.ExtraBold,
+                            color = CafeDarkText
                         )
+                        Surface(
+                            color = CafeGreenContainer,
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = "ML Sentiment: ${fb.sentimentLabel}",
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 12.sp,
+                                color = CafeGreenPrimary
+                            )
+                        }
                     }
+                    Text(
+                        text = fb.comment,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = CafeDarkText
+                    )
                 }
             }
         }
